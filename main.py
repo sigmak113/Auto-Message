@@ -111,6 +111,15 @@ DEFAULT_TEMPLATES = [
 ]
 
 
+CIRCLED_NUMERAL_PATTERN = re.compile(r"^[①-⑳㉑-㉟]\s*")
+
+
+def _strip_leading_numeral(name):
+    """이름 맨 앞의 ①②③ 같은 원문자 번호를 제거합니다.
+    (번호는 이제 목록의 색깔 배지로 표시되므로 제목에 중복으로 남아있을 필요가 없습니다.)"""
+    return CIRCLED_NUMERAL_PATTERN.sub("", name).strip()
+
+
 def load_templates():
     if not os.path.exists(TEMPLATES_PATH):
         save_templates(DEFAULT_TEMPLATES)
@@ -119,7 +128,16 @@ def load_templates():
         with open(TEMPLATES_PATH, "r", encoding="utf-8") as f:
             data = json.load(f)
         if isinstance(data, list) and data:
-            return data
+            cleaned = []
+            changed = False
+            for t in data:
+                new_name = _strip_leading_numeral(t.get("name", ""))
+                if new_name != t.get("name", ""):
+                    changed = True
+                cleaned.append({"name": new_name, "body": t.get("body", "")})
+            if changed:
+                save_templates(cleaned)
+            return cleaned
     except Exception:
         pass
     return [dict(t) for t in DEFAULT_TEMPLATES]
