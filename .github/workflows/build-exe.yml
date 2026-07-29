@@ -21,11 +21,13 @@ jobs:
         run: pip install pyinstaller
 
       - name: exe 빌드
-        run: pyinstaller --onefile --windowed --name 섭외메세지생성기 main.py
+        run: pyinstaller --onefile --windowed --name 섭외메세지생성기 --icon assets/icon.ico main.py
 
-      - name: templates.json 같이 넣기
+      - name: templates.json / 아이콘 같이 넣기
         shell: powershell
-        run: Copy-Item templates.json dist/templates.json
+        run: |
+          Copy-Item templates.json dist/templates.json
+          Copy-Item -Recurse assets dist/assets
 
       - name: exe 업로드 (다운로드 가능하게)
         uses: actions/upload-artifact@v4
