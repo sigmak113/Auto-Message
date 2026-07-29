@@ -11,7 +11,7 @@ import os
 import re
 import sys
 import tkinter as tk
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk, messagebox
 
 # ------------------------------------------------------------------
 # 경로 설정 (exe로 빌드했을 때도 exe 파일 옆에 templates.json이 생기도록 처리)
@@ -24,6 +24,24 @@ else:
 TEMPLATES_PATH = os.path.join(BASE_DIR, "templates.json")
 
 PLACEHOLDER_PATTERN = re.compile(r"\[([^\[\]]+)\]")
+
+# ------------------------------------------------------------------
+# 컬러 / 폰트 팔레트
+# ------------------------------------------------------------------
+BG = "#F2F4F8"          # 전체 배경
+CARD = "#FFFFFF"        # 카드 배경
+BORDER = "#E4E7EC"      # 카드 테두리
+TEXT_MAIN = "#1B1F27"
+TEXT_SUB = "#6B7280"
+PRIMARY = "#00B894"     # 포인트 컬러 (민트/그린)
+PRIMARY_DARK = "#00A383"
+HEADER_BG = "#101820"
+
+FONT_BASE = ("맑은 고딕", 10)
+FONT_SECTION = ("맑은 고딕", 11, "bold")
+FONT_LABEL = ("맑은 고딕", 9, "bold")
+FONT_HEADER = ("맑은 고딕", 13, "bold")
+FONT_BTN = ("맑은 고딕", 10, "bold")
 
 DEFAULT_TEMPLATES = [
     {
@@ -90,6 +108,14 @@ def extract_placeholders(text):
     return seen
 
 
+def card(parent, **kwargs):
+    """흰 배경 + 옅은 테두리를 가진 '카드'처럼 보이는 프레임"""
+    outer = tk.Frame(parent, bg=BORDER, **kwargs)
+    inner = tk.Frame(outer, bg=CARD)
+    inner.pack(fill="both", expand=True, padx=1, pady=1)
+    return outer, inner
+
+
 # ------------------------------------------------------------------
 # 템플릿 추가/수정 다이얼로그
 # ------------------------------------------------------------------
@@ -97,43 +123,54 @@ class TemplateEditDialog(tk.Toplevel):
     def __init__(self, parent, name="", body=""):
         super().__init__(parent)
         self.title("템플릿 편집")
-        self.geometry("560x480")
+        self.geometry("580x520")
+        self.configure(bg=BG)
         self.result = None
         self.transient(parent)
         self.grab_set()
 
-        pad = {"padx": 12, "pady": 6}
+        pad = {"padx": 20, "pady": (16, 4)}
 
-        tk.Label(self, text="템플릿 이름", font=("맑은 고딕", 10, "bold")).pack(
+        tk.Label(self, text="템플릿 이름", font=FONT_LABEL, bg=BG, fg=TEXT_MAIN).pack(
             anchor="w", **pad
         )
-        self.name_entry = tk.Entry(self, font=("맑은 고딕", 10))
-        self.name_entry.pack(fill="x", padx=12)
+        self.name_entry = tk.Entry(
+            self, font=FONT_BASE, relief="flat", bg="#FFFFFF",
+            highlightthickness=1, highlightbackground=BORDER, highlightcolor=PRIMARY,
+        )
+        self.name_entry.pack(fill="x", padx=20, ipady=6)
         self.name_entry.insert(0, name)
 
         tk.Label(
             self,
             text="본문  (바뀌는 부분은 대괄호로 감싸주세요. 예: [모집공고 제목])",
-            font=("맑은 고딕", 10, "bold"),
+            font=FONT_LABEL, bg=BG, fg=TEXT_MAIN,
         ).pack(anchor="w", **pad)
 
-        body_frame = tk.Frame(self)
-        body_frame.pack(fill="both", expand=True, padx=12)
-        self.body_text = tk.Text(body_frame, font=("맑은 고딕", 10), wrap="word")
-        scroll = tk.Scrollbar(body_frame, command=self.body_text.yview)
+        body_outer, body_inner = card(self)
+        body_outer.pack(fill="both", expand=True, padx=20, pady=(0, 6))
+        self.body_text = tk.Text(
+            body_inner, font=FONT_BASE, wrap="word", relief="flat",
+            bg=CARD, fg=TEXT_MAIN, padx=10, pady=10,
+        )
+        scroll = tk.Scrollbar(body_inner, command=self.body_text.yview)
         self.body_text.configure(yscrollcommand=scroll.set)
         self.body_text.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
         self.body_text.insert("1.0", body)
 
-        btn_frame = tk.Frame(self)
-        btn_frame.pack(fill="x", padx=12, pady=12)
-        tk.Button(btn_frame, text="저장", width=10, command=self._on_save).pack(
-            side="right", padx=4
-        )
-        tk.Button(btn_frame, text="취소", width=10, command=self.destroy).pack(
-            side="right", padx=4
-        )
+        btn_frame = tk.Frame(self, bg=BG)
+        btn_frame.pack(fill="x", padx=20, pady=16)
+        tk.Button(
+            btn_frame, text="취소", width=10, font=FONT_BASE, relief="flat",
+            bg="#E5E7EB", fg=TEXT_MAIN, activebackground="#D1D5DB",
+            command=self.destroy,
+        ).pack(side="right", padx=(6, 0), ipady=4)
+        tk.Button(
+            btn_frame, text="저장", width=10, font=FONT_BTN, relief="flat",
+            bg=PRIMARY, fg="white", activebackground=PRIMARY_DARK,
+            command=self._on_save,
+        ).pack(side="right", ipady=4)
 
     def _on_save(self):
         name = self.name_entry.get().strip()
@@ -155,34 +192,59 @@ class App(tk.Tk):
     def __init__(self):
         super().__init__()
         self.title("섭외 메세지 생성기")
-        self.geometry("1000x640")
-        self.minsize(860, 560)
+        self.geometry("1080x680")
+        self.minsize(920, 580)
+        self.configure(bg=BG)
 
         self.templates = load_templates()
         self.selected_index = None
-        self.field_entries = {}  # placeholder name -> tk.Entry
+        self.field_vars = {}      # placeholder name -> tk.StringVar
+        self.field_entries = {}   # placeholder name -> tk.Entry
 
+        self._build_style()
+        self._build_header()
         self._build_layout()
         self._refresh_template_list()
 
+    # ---------------- 스타일 ----------------
+    def _build_style(self):
+        style = ttk.Style(self)
+        try:
+            style.theme_use("clam")
+        except tk.TclError:
+            pass
+        style.configure("TScrollbar", background=BORDER, troughcolor=BG, borderwidth=0)
+
+    def _build_header(self):
+        header = tk.Frame(self, bg=HEADER_BG, height=54)
+        header.pack(fill="x", side="top")
+        header.pack_propagate(False)
+        tk.Label(
+            header, text="✉  섭외 메세지 생성기", font=FONT_HEADER,
+            bg=HEADER_BG, fg="white",
+        ).pack(side="left", padx=20)
+
     # ---------------- UI 구성 ----------------
     def _build_layout(self):
-        root_frame = tk.Frame(self)
+        root_frame = tk.Frame(self, bg=BG)
         root_frame.pack(fill="both", expand=True)
 
         # 왼쪽: 템플릿 목록
-        left = tk.Frame(root_frame, width=260)
-        left.pack(side="left", fill="y", padx=(10, 4), pady=10)
-        left.pack_propagate(False)
+        left_outer, left = card(root_frame, width=270)
+        left_outer.pack(side="left", fill="y", padx=(16, 8), pady=16)
+        left_outer.pack_propagate(False)
 
-        tk.Label(left, text="템플릿 목록", font=("맑은 고딕", 11, "bold")).pack(
-            anchor="w"
-        )
+        tk.Label(
+            left, text="템플릿 목록", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
+        ).pack(anchor="w", padx=16, pady=(14, 8))
 
-        list_frame = tk.Frame(left)
-        list_frame.pack(fill="both", expand=True, pady=6)
+        list_frame = tk.Frame(left, bg=CARD)
+        list_frame.pack(fill="both", expand=True, padx=16)
         self.template_listbox = tk.Listbox(
-            list_frame, font=("맑은 고딕", 10), activestyle="none"
+            list_frame, font=FONT_BASE, activestyle="none", relief="flat",
+            bg=CARD, fg=TEXT_MAIN, highlightthickness=0,
+            selectbackground=PRIMARY, selectforeground="white",
+            bd=0,
         )
         list_scroll = tk.Scrollbar(list_frame, command=self.template_listbox.yview)
         self.template_listbox.configure(yscrollcommand=list_scroll.set)
@@ -190,74 +252,102 @@ class App(tk.Tk):
         list_scroll.pack(side="right", fill="y")
         self.template_listbox.bind("<<ListboxSelect>>", self._on_select_template)
 
-        btns = tk.Frame(left)
-        btns.pack(fill="x", pady=4)
-        tk.Button(btns, text="추가", command=self._add_template).pack(
-            side="left", expand=True, fill="x", padx=2
+        btns = tk.Frame(left, bg=CARD)
+        btns.pack(fill="x", padx=16, pady=14)
+        self._small_btn(btns, "＋ 추가", self._add_template, PRIMARY, "white").pack(
+            side="left", expand=True, fill="x", padx=(0, 4)
         )
-        tk.Button(btns, text="수정", command=self._edit_template).pack(
-            side="left", expand=True, fill="x", padx=2
+        self._small_btn(btns, "수정", self._edit_template, "#E5E7EB", TEXT_MAIN).pack(
+            side="left", expand=True, fill="x", padx=4
         )
-        tk.Button(btns, text="삭제", command=self._delete_template).pack(
-            side="left", expand=True, fill="x", padx=2
+        self._small_btn(btns, "삭제", self._delete_template, "#FEE2E2", "#B91C1C").pack(
+            side="left", expand=True, fill="x", padx=(4, 0)
         )
 
         # 가운데: 항목 입력
-        mid = tk.Frame(root_frame, width=320)
-        mid.pack(side="left", fill="both", padx=4, pady=10)
-        mid.pack_propagate(False)
+        mid_outer, mid = card(root_frame, width=310)
+        mid_outer.pack(side="left", fill="both", padx=8, pady=16)
+        mid_outer.pack_propagate(False)
 
-        tk.Label(mid, text="변경할 항목 입력", font=("맑은 고딕", 11, "bold")).pack(
-            anchor="w"
-        )
+        tk.Label(
+            mid, text="변경할 항목 입력", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
+        ).pack(anchor="w", padx=16, pady=(14, 8))
 
-        canvas = tk.Canvas(mid, highlightthickness=0)
+        canvas = tk.Canvas(mid, highlightthickness=0, bg=CARD)
         vscroll = tk.Scrollbar(mid, orient="vertical", command=canvas.yview)
-        self.fields_frame = tk.Frame(canvas)
+        self.fields_frame = tk.Frame(canvas, bg=CARD)
         self.fields_frame.bind(
             "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         canvas.create_window((0, 0), window=self.fields_frame, anchor="nw")
         canvas.configure(yscrollcommand=vscroll.set)
-        canvas.pack(side="left", fill="both", expand=True, pady=6)
-        vscroll.pack(side="right", fill="y")
+        canvas.pack(side="left", fill="both", expand=True, padx=(16, 0))
+        vscroll.pack(side="right", fill="y", padx=(0, 4))
         self.fields_canvas = canvas
 
-        tk.Button(
-            mid, text="메세지 생성 ▶", font=("맑은 고딕", 10, "bold"),
-            command=self._generate_message, bg="#3B82F6", fg="white"
-        ).pack(fill="x", pady=8)
+        self._primary_btn(mid, "메세지 생성 ▶", self._generate_message).pack(
+            fill="x", padx=16, pady=14, ipady=6
+        )
 
         # 오른쪽: 미리보기
-        right = tk.Frame(root_frame)
-        right.pack(side="left", fill="both", expand=True, padx=(4, 10), pady=10)
+        right_outer, right = card(root_frame)
+        right_outer.pack(side="left", fill="both", expand=True, padx=(8, 16), pady=16)
 
-        tk.Label(right, text="미리보기", font=("맑은 고딕", 11, "bold")).pack(anchor="w")
+        tk.Label(
+            right, text="미리보기", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
+        ).pack(anchor="w", padx=16, pady=(14, 8))
 
-        preview_frame = tk.Frame(right)
-        preview_frame.pack(fill="both", expand=True, pady=6)
+        preview_frame = tk.Frame(right, bg=CARD)
+        preview_frame.pack(fill="both", expand=True, padx=16)
         self.preview_text = tk.Text(
-            preview_frame, font=("맑은 고딕", 11), wrap="word", state="disabled"
+            preview_frame, font=("맑은 고딕", 11), wrap="word", state="disabled",
+            relief="flat", bg="#F8F9FB", fg=TEXT_MAIN, padx=14, pady=14,
+            highlightthickness=1, highlightbackground=BORDER,
         )
         preview_scroll = tk.Scrollbar(preview_frame, command=self.preview_text.yview)
         self.preview_text.configure(yscrollcommand=preview_scroll.set)
         self.preview_text.pack(side="left", fill="both", expand=True)
         preview_scroll.pack(side="right", fill="y")
 
-        tk.Button(
-            right, text="📋 클립보드로 복사", font=("맑은 고딕", 10, "bold"),
-            command=self._copy_to_clipboard, bg="#10B981", fg="white"
-        ).pack(fill="x", pady=4)
+        self._accent_btn(right, "📋  클립보드로 복사", self._copy_to_clipboard).pack(
+            fill="x", padx=16, pady=(12, 4), ipady=7
+        )
 
-        self.status_label = tk.Label(right, text="", fg="#555")
-        self.status_label.pack(anchor="w", pady=(4, 0))
+        self.status_label = tk.Label(
+            right, text="", fg=TEXT_SUB, bg=CARD, font=("맑은 고딕", 9)
+        )
+        self.status_label.pack(anchor="w", padx=16, pady=(0, 14))
+
+    # ---------------- 버튼 헬퍼 ----------------
+    def _small_btn(self, parent, text, command, bg, fg):
+        return tk.Button(
+            parent, text=text, command=command, font=("맑은 고딕", 9, "bold"),
+            relief="flat", bg=bg, fg=fg, activebackground=bg, bd=0,
+            cursor="hand2", pady=6,
+        )
+
+    def _primary_btn(self, parent, text, command):
+        return tk.Button(
+            parent, text=text, command=command, font=FONT_BTN,
+            relief="flat", bg=PRIMARY_DARK, fg="white",
+            activebackground=PRIMARY, activeforeground="white",
+            bd=0, cursor="hand2",
+        )
+
+    def _accent_btn(self, parent, text, command):
+        return tk.Button(
+            parent, text=text, command=command, font=FONT_BTN,
+            relief="flat", bg=PRIMARY, fg="white",
+            activebackground=PRIMARY_DARK, activeforeground="white",
+            bd=0, cursor="hand2",
+        )
 
     # ---------------- 템플릿 목록 로직 ----------------
     def _refresh_template_list(self, keep_selection=True):
         prev = self.selected_index
         self.template_listbox.delete(0, "end")
         for t in self.templates:
-            self.template_listbox.insert("end", t["name"])
+            self.template_listbox.insert("end", "  " + t["name"])
         save_templates(self.templates)
         if keep_selection and prev is not None and prev < len(self.templates):
             self.template_listbox.selection_set(prev)
@@ -278,23 +368,36 @@ class App(tk.Tk):
 
         for w in self.fields_frame.winfo_children():
             w.destroy()
+        self.field_vars = {}
         self.field_entries = {}
 
         if not placeholders:
             tk.Label(
                 self.fields_frame,
                 text="이 템플릿에는 변경할 [ ] 항목이 없습니다.",
-                fg="#777",
-                wraplength=280,
-                justify="left",
+                fg=TEXT_SUB, bg=CARD, wraplength=260, justify="left",
             ).pack(anchor="w", pady=8, padx=4)
         else:
             for name in placeholders:
                 tk.Label(
-                    self.fields_frame, text=name, font=("맑은 고딕", 9, "bold")
-                ).pack(anchor="w", padx=4, pady=(8, 0))
-                entry = tk.Entry(self.fields_frame, font=("맑은 고딕", 10), width=32)
-                entry.pack(anchor="w", padx=4, fill="x")
+                    self.fields_frame, text=name, font=FONT_LABEL,
+                    bg=CARD, fg=TEXT_MAIN,
+                ).pack(anchor="w", padx=4, pady=(10, 3))
+
+                var = tk.StringVar()
+                # StringVar의 write 트레이스를 사용해야 한글(IME) 조합 중에도
+                # 글자가 깨지지 않고 정확한 시점에만 미리보기가 갱신됩니다.
+                var.trace_add(
+                    "write", lambda *args: self._update_preview_from_fields(auto=True)
+                )
+                entry = tk.Entry(
+                    self.fields_frame, font=FONT_BASE, textvariable=var,
+                    relief="flat", bg="#F8F9FB", fg=TEXT_MAIN,
+                    highlightthickness=1, highlightbackground=BORDER,
+                    highlightcolor=PRIMARY, insertbackground=TEXT_MAIN,
+                )
+                entry.pack(anchor="w", padx=4, fill="x", ipady=5)
+                self.field_vars[name] = var
                 self.field_entries[name] = entry
 
         self._update_preview_from_fields(auto=True)
@@ -302,6 +405,7 @@ class App(tk.Tk):
     def _clear_fields(self):
         for w in self.fields_frame.winfo_children():
             w.destroy()
+        self.field_vars = {}
         self.field_entries = {}
         self.selected_index = None
         self._set_preview("")
@@ -353,8 +457,8 @@ class App(tk.Tk):
 
         def repl(m):
             key = m.group(1)
-            entry = self.field_entries.get(key)
-            val = entry.get().strip() if entry else ""
+            var = self.field_vars.get(key)
+            val = var.get().strip() if var else ""
             return val if val else f"[{key}]"
 
         result = PLACEHOLDER_PATTERN.sub(repl, text)
