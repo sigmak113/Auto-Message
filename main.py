@@ -306,7 +306,6 @@ class App(tk.Tk):
         self.template_row_widgets = []  # (outer_frame, inner_frame) per template row
 
         self._apply_icon()
-        self._build_header()
         self._build_layout()
         self._refresh_template_list()
 
@@ -317,15 +316,6 @@ class App(tk.Tk):
                 self.iconbitmap(ICON_PATH)
             except tk.TclError:
                 pass
-
-    def _build_header(self):
-        header = tk.Frame(self, bg=HEADER_BG, height=42)
-        header.pack(fill="x", side="top")
-        header.pack_propagate(False)
-        tk.Label(
-            header, text="✉  섭외 메세지 생성기", font=FONT_HEADER,
-            bg=HEADER_BG, fg="white",
-        ).pack(side="left", padx=18)
 
     # ---------------- UI 구성 ----------------
     def _build_layout(self):
@@ -525,13 +515,13 @@ class App(tk.Tk):
                 self.fields_frame,
                 text="이 템플릿에는 변경할 [ ] 항목이 없습니다.",
                 fg=TEXT_SUB, bg=CARD, wraplength=260, justify="left",
-            ).pack(anchor="w", pady=8, padx=4)
+            ).pack(anchor="w", pady=8)
         else:
             for name in placeholders:
                 tk.Label(
                     self.fields_frame, text=name, font=FONT_LABEL,
                     bg=CARD, fg=TEXT_MAIN,
-                ).pack(anchor="w", padx=4, pady=(10, 3))
+                ).pack(anchor="w", pady=(10, 3))
 
                 var = tk.StringVar()
                 # StringVar의 write 트레이스를 사용해야 한글(IME) 조합 중에도
@@ -545,7 +535,7 @@ class App(tk.Tk):
                     highlightthickness=1, highlightbackground=BORDER,
                     highlightcolor=PRIMARY, insertbackground=TEXT_MAIN,
                 )
-                entry.pack(anchor="w", padx=4, fill="x", ipady=5)
+                entry.pack(anchor="w", fill="x", ipady=5)
                 self.field_vars[name] = var
                 self.field_entries[name] = entry
 
