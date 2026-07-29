@@ -69,11 +69,11 @@ BADGE_COLORS = ["#00B894", "#0984E3", "#6C5CE7", "#E17055", "#E84393", "#00B8D9"
 FONT_FAMILY = "Pretendard"
 FONT_BASE = (FONT_FAMILY, 10)
 FONT_SECTION = (FONT_FAMILY, 11, "bold")
-FONT_LABEL = (FONT_FAMILY, 9, "bold")
+FONT_LABEL = (FONT_FAMILY, 10, "bold")
 FONT_HEADER = (FONT_FAMILY, 12, "bold")
 FONT_BTN = (FONT_FAMILY, 10, "bold")
-FONT_DIALOG_LABEL = (FONT_FAMILY, 13, "bold")   # 템플릿 편집창 라벨
-FONT_DIALOG_BASE = (FONT_FAMILY, 13)            # 템플릿 편집창 입력/본문
+FONT_DIALOG_LABEL = (FONT_FAMILY, 11, "bold")   # 템플릿 편집창 라벨
+FONT_DIALOG_BASE = (FONT_FAMILY, 10)            # 템플릿 편집창 입력/본문
 
 BTN_HEIGHT = 40  # 추가/수정/삭제/복사 버튼 공통 높이
 
@@ -176,6 +176,46 @@ def _rounded_points(x1, y1, x2, y2, r):
         x1, y1 + r,
         x1, y1,
     ]
+
+
+def _make_scrollable(parent, bg=CARD):
+    """세로 스크롤이 되는 영역을 만듭니다.
+    - 안쪽 프레임 너비가 항상 캔버스 너비에 맞춰 늘어나서, 안의 내용이 카드 폭에 꽉 차게 됩니다.
+    - 마우스 휠로도 스크롤할 수 있습니다.
+    반환값: (바깥 프레임, 스크롤되는 안쪽 프레임)
+    """
+    area = tk.Frame(parent, bg=bg)
+    canvas = tk.Canvas(area, highlightthickness=0, bg=bg)
+    scrollbar = tk.Scrollbar(area, orient="vertical", command=canvas.yview)
+    inner = tk.Frame(canvas, bg=bg)
+
+    window_id = canvas.create_window((0, 0), window=inner, anchor="nw")
+
+    def _sync_scrollregion(event=None):
+        canvas.configure(scrollregion=canvas.bbox("all"))
+
+    def _sync_width(event):
+        canvas.itemconfigure(window_id, width=event.width)
+
+    inner.bind("<Configure>", _sync_scrollregion)
+    canvas.bind("<Configure>", _sync_width)
+    canvas.configure(yscrollcommand=scrollbar.set)
+    canvas.pack(side="left", fill="both", expand=True)
+    scrollbar.pack(side="right", fill="y")
+
+    def _on_wheel(event):
+        canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def _enable_wheel(event):
+        canvas.bind_all("<MouseWheel>", _on_wheel)
+
+    def _disable_wheel(event):
+        canvas.unbind_all("<MouseWheel>")
+
+    area.bind("<Enter>", _enable_wheel)
+    area.bind("<Leave>", _disable_wheel)
+
+    return area, inner
 
 
 # ------------------------------------------------------------------
@@ -374,20 +414,8 @@ class App(tk.Tk):
             left_content, text="템플릿 목록", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
         ).pack(anchor="w", pady=(4, 8))
 
-        list_area = tk.Frame(left_content, bg=CARD)
+        list_area, self.template_list_frame = _make_scrollable(left_content, bg=CARD)
         list_area.pack(fill="both", expand=True)
-
-        list_canvas = tk.Canvas(list_area, bg=CARD, highlightthickness=0)
-        list_scroll = tk.Scrollbar(list_area, command=list_canvas.yview)
-        self.template_list_frame = tk.Frame(list_canvas, bg=CARD)
-        self.template_list_frame.bind(
-            "<Configure>",
-            lambda e: list_canvas.configure(scrollregion=list_canvas.bbox("all")),
-        )
-        list_canvas.create_window((0, 0), window=self.template_list_frame, anchor="nw")
-        list_canvas.configure(yscrollcommand=list_scroll.set)
-        list_canvas.pack(side="left", fill="both", expand=True)
-        list_scroll.pack(side="right", fill="y")
 
         btns = tk.Frame(left_content, bg=CARD)
         btns.pack(fill="x", pady=(12, 4))
@@ -425,19 +453,8 @@ class App(tk.Tk):
             mid_content, text="변경할 항목 입력", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
         ).pack(anchor="w", pady=(4, 8))
 
-        fields_area = tk.Frame(mid_content, bg=CARD)
+        fields_area, self.fields_frame = _make_scrollable(mid_content, bg=CARD)
         fields_area.pack(fill="both", expand=True)
-
-        canvas = tk.Canvas(fields_area, highlightthickness=0, bg=CARD)
-        vscroll = tk.Scrollbar(fields_area, orient="vertical", command=canvas.yview)
-        self.fields_frame = tk.Frame(canvas, bg=CARD)
-        self.fields_frame.bind(
-            "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-        )
-        canvas.create_window((0, 0), window=self.fields_frame, anchor="nw")
-        canvas.configure(yscrollcommand=vscroll.set)
-        canvas.pack(side="left", fill="both", expand=True)
-        vscroll.pack(side="right", fill="y")
 
         gen_holder = tk.Frame(mid_content, bg=CARD, height=BTN_HEIGHT)
         gen_holder.pack_propagate(False)
@@ -456,6 +473,19 @@ class App(tk.Tk):
             right_content, text="미리보기", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
         ).pack(anchor="w", pady=(4, 8))
 
+        copy_holder = tk.Frame(right_content, bg=CARD, height=BTN_HEIGHT)
+        copy_holder.pack_propagate(False)
+        copy_holder.pack(side="bottom", fill="x", pady=(8, 4))
+        RoundedButton(
+            copy_holder, "📋  클립보드로 복사", self._copy_to_clipboard, bg=PRIMARY,
+            fg="white", hover_bg=PRIMARY_DARK, height=BTN_HEIGHT, radius=10, parent_bg=CARD,
+        ).pack(fill="both", expand=True)
+
+        self.status_label = tk.Label(
+            right_content, text="", fg=TEXT_SUB, bg=CARD, font=(FONT_FAMILY, 9)
+        )
+        self.status_label.pack(side="bottom", anchor="w")
+
         preview_frame = tk.Frame(right_content, bg=CARD)
         preview_frame.pack(fill="both", expand=True)
         self.preview_text = tk.Text(
@@ -467,19 +497,6 @@ class App(tk.Tk):
         self.preview_text.configure(yscrollcommand=preview_scroll.set)
         self.preview_text.pack(side="left", fill="both", expand=True)
         preview_scroll.pack(side="right", fill="y")
-
-        copy_holder = tk.Frame(right_content, bg=CARD, height=BTN_HEIGHT)
-        copy_holder.pack_propagate(False)
-        copy_holder.pack(fill="x", pady=(12, 4))
-        RoundedButton(
-            copy_holder, "📋  클립보드로 복사", self._copy_to_clipboard, bg=PRIMARY,
-            fg="white", hover_bg=PRIMARY_DARK, height=BTN_HEIGHT, radius=10, parent_bg=CARD,
-        ).pack(fill="both", expand=True)
-
-        self.status_label = tk.Label(
-            right_content, text="", fg=TEXT_SUB, bg=CARD, font=(FONT_FAMILY, 9)
-        )
-        self.status_label.pack(anchor="w", pady=(6, 4))
 
     # ---------------- 템플릿 목록 로직 ----------------
     def _refresh_template_list(self, keep_selection=True):
