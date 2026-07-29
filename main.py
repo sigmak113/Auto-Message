@@ -23,8 +23,28 @@ else:
 
 TEMPLATES_PATH = os.path.join(BASE_DIR, "templates.json")
 ICON_PATH = os.path.join(BASE_DIR, "assets", "icon.ico")
+FONTS_DIR = os.path.join(BASE_DIR, "assets", "fonts")
 
 PLACEHOLDER_PATTERN = re.compile(r"\[([^\[\]]+)\]")
+
+
+def load_bundled_fonts():
+    """exe와 같은 폴더에 들어있는 Pretendard 폰트를,
+    시스템에 설치하지 않고도(프로세스 전용으로) 즉시 쓸 수 있게 등록합니다."""
+    if sys.platform != "win32":
+        return
+    if not os.path.isdir(FONTS_DIR):
+        return
+    try:
+        import ctypes
+        FR_PRIVATE = 0x10
+        gdi32 = ctypes.windll.gdi32
+        for fname in os.listdir(FONTS_DIR):
+            if fname.lower().endswith((".ttf", ".otf")):
+                path = os.path.join(FONTS_DIR, fname)
+                gdi32.AddFontResourceExW(ctypes.c_wchar_p(path), FR_PRIVATE, 0)
+    except Exception:
+        pass
 
 # ------------------------------------------------------------------
 # 컬러 / 폰트 팔레트
@@ -46,17 +66,18 @@ NEUTRAL_HOVER = "#E2E5EA"
 
 BADGE_COLORS = ["#00B894", "#0984E3", "#6C5CE7", "#E17055", "#E84393", "#00B8D9"]
 
-FONT_BASE = ("맑은 고딕", 10)
-FONT_SECTION = ("맑은 고딕", 11, "bold")
-FONT_LABEL = ("맑은 고딕", 9, "bold")
-FONT_HEADER = ("맑은 고딕", 12, "bold")
-FONT_BTN = ("맑은 고딕", 10, "bold")
+FONT_FAMILY = "Pretendard"
+FONT_BASE = (FONT_FAMILY, 10)
+FONT_SECTION = (FONT_FAMILY, 11, "bold")
+FONT_LABEL = (FONT_FAMILY, 9, "bold")
+FONT_HEADER = (FONT_FAMILY, 12, "bold")
+FONT_BTN = (FONT_FAMILY, 10, "bold")
 
 BTN_HEIGHT = 40  # 추가/수정/삭제/복사 버튼 공통 높이
 
 DEFAULT_TEMPLATES = [
     {
-        "name": "① 지원 확인 + 가이드 전달",
+        "name": "지원 확인 + 가이드 전달",
         "body": (
             "안녕하세요! :)\n\n"
             "[모집공고 제목] 셀프캠 영상에 지원해주신 메일보고 연락드렸습니다! :)\n\n"
@@ -67,7 +88,7 @@ DEFAULT_TEMPLATES = [
         ),
     },
     {
-        "name": "② 입금자명 / 입금일 안내",
+        "name": "입금자명 / 입금일 안내",
         "body": (
             "안녕하세요! :)\n\n"
             "[모집공고 제목] 건 입금 관련하여 안내드립니다!\n\n"
@@ -77,7 +98,7 @@ DEFAULT_TEMPLATES = [
         ),
     },
     {
-        "name": "③ 진행 거절 안내",
+        "name": "진행 거절 안내",
         "body": (
             "안녕하세요! :)\n\n"
             "[모집공고 제목] 건으로 연락드립니다.\n\n"
@@ -294,6 +315,7 @@ class TemplateEditDialog(tk.Toplevel):
 class App(tk.Tk):
     def __init__(self):
         super().__init__()
+        self.option_add("*Font", FONT_BASE)
         self.title("섭외 메세지 생성기")
         self.geometry("1080x680")
         self.minsize(920, 580)
@@ -417,7 +439,7 @@ class App(tk.Tk):
         preview_frame = tk.Frame(right_content, bg=CARD)
         preview_frame.pack(fill="both", expand=True)
         self.preview_text = tk.Text(
-            preview_frame, font=("맑은 고딕", 11), wrap="word", state="disabled",
+            preview_frame, font=(FONT_FAMILY, 11), wrap="word", state="disabled",
             relief="flat", bg="#F8F9FB", fg=TEXT_MAIN, padx=14, pady=14,
             highlightthickness=1, highlightbackground=BORDER,
         )
@@ -435,7 +457,7 @@ class App(tk.Tk):
         ).pack(fill="both", expand=True)
 
         self.status_label = tk.Label(
-            right_content, text="", fg=TEXT_SUB, bg=CARD, font=("맑은 고딕", 9)
+            right_content, text="", fg=TEXT_SUB, bg=CARD, font=(FONT_FAMILY, 9)
         )
         self.status_label.pack(anchor="w", pady=(6, 4))
 
@@ -480,7 +502,7 @@ class App(tk.Tk):
             badge.pack(side="left", padx=(10, 8), pady=9)
             badge.create_oval(1, 1, 25, 25, fill=badge_color, outline=badge_color)
             badge.create_text(
-                13, 13, text=str(idx + 1), fill="white", font=("맑은 고딕", 9, "bold")
+                13, 13, text=str(idx + 1), fill="white", font=(FONT_FAMILY, 9, "bold")
             )
 
             name_label = tk.Label(
@@ -628,5 +650,6 @@ class App(tk.Tk):
 
 
 if __name__ == "__main__":
+    load_bundled_fonts()
     app = App()
     app.mainloop()
