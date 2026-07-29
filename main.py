@@ -72,6 +72,8 @@ FONT_SECTION = (FONT_FAMILY, 11, "bold")
 FONT_LABEL = (FONT_FAMILY, 9, "bold")
 FONT_HEADER = (FONT_FAMILY, 12, "bold")
 FONT_BTN = (FONT_FAMILY, 10, "bold")
+FONT_DIALOG_LABEL = (FONT_FAMILY, 13, "bold")   # 템플릿 편집창 라벨
+FONT_DIALOG_BASE = (FONT_FAMILY, 13)            # 템플릿 편집창 입력/본문
 
 BTN_HEIGHT = 40  # 추가/수정/삭제/복사 버튼 공통 높이
 
@@ -285,27 +287,27 @@ class TemplateEditDialog(tk.Toplevel):
             hover_bg=NEUTRAL_HOVER, height=BTN_HEIGHT, radius=10, parent_bg=BG,
         ).pack(fill="both", expand=True)
 
-        tk.Label(self, text="템플릿 이름", font=FONT_LABEL, bg=BG, fg=TEXT_MAIN).pack(
+        tk.Label(self, text="템플릿 이름", font=FONT_DIALOG_LABEL, bg=BG, fg=TEXT_MAIN).pack(
             anchor="w", **pad
         )
         self.name_entry = tk.Entry(
-            self, font=FONT_BASE, relief="flat", bg="#FFFFFF",
+            self, font=FONT_DIALOG_BASE, relief="flat", bg="#FFFFFF",
             highlightthickness=1, highlightbackground=BORDER, highlightcolor=PRIMARY,
         )
-        self.name_entry.pack(fill="x", padx=20, ipady=6)
+        self.name_entry.pack(fill="x", padx=20, ipady=8)
         self.name_entry.insert(0, name)
 
         tk.Label(
             self,
             text="본문  (바뀌는 부분은 대괄호로 감싸주세요. 예: [모집공고 제목])",
-            font=FONT_LABEL, bg=BG, fg=TEXT_MAIN,
+            font=FONT_DIALOG_LABEL, bg=BG, fg=TEXT_MAIN,
         ).pack(anchor="w", **pad)
 
         body_card = RoundedCard(self, radius=12, bg=CARD, border=BORDER, parent_bg=BG)
         body_card.pack(fill="both", expand=True, padx=20, pady=(0, 6))
         body_inner = body_card.content
         self.body_text = tk.Text(
-            body_inner, font=FONT_BASE, wrap="word", relief="flat",
+            body_inner, font=FONT_DIALOG_BASE, wrap="word", relief="flat",
             bg=CARD, fg=TEXT_MAIN,
         )
         scroll = tk.Scrollbar(body_inner, command=self.body_text.yview)
