@@ -204,6 +204,13 @@ def _make_scrollable(parent, bg=CARD):
     scrollbar.pack(side="right", fill="y")
 
     def _on_wheel(event):
+        bbox = canvas.bbox("all")
+        if not bbox:
+            return
+        content_h = bbox[3] - bbox[1]
+        view_h = canvas.winfo_height()
+        if content_h <= view_h:
+            return  # 스크롤할 내용이 없으면 아무것도 하지 않음
         canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _enable_wheel(event):
