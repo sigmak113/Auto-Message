@@ -22,6 +22,7 @@ else:
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 
 TEMPLATES_PATH = os.path.join(BASE_DIR, "templates.json")
+ICON_PATH = os.path.join(BASE_DIR, "assets", "icon.ico")
 
 PLACEHOLDER_PATTERN = re.compile(r"\[([^\[\]]+)\]")
 
@@ -201,10 +202,19 @@ class App(tk.Tk):
         self.field_vars = {}      # placeholder name -> tk.StringVar
         self.field_entries = {}   # placeholder name -> tk.Entry
 
+        self._apply_icon()
         self._build_style()
         self._build_header()
         self._build_layout()
         self._refresh_template_list()
+
+    # ---------------- 아이콘 ----------------
+    def _apply_icon(self):
+        if os.path.exists(ICON_PATH):
+            try:
+                self.iconbitmap(ICON_PATH)
+            except tk.TclError:
+                pass
 
     # ---------------- 스타일 ----------------
     def _build_style(self):
