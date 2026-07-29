@@ -36,13 +36,23 @@ TEXT_MAIN = "#1B1F27"
 TEXT_SUB = "#6B7280"
 PRIMARY = "#00B894"     # 포인트 컬러 (민트/그린)
 PRIMARY_DARK = "#00A383"
-HEADER_BG = "#101820"
+PRIMARY_TINT = "#E6F9F3"  # 선택된 항목 배경(연한 민트)
+HEADER_BG = "#1B2733"
+DANGER_BG = "#FDEDED"
+DANGER_FG = "#C0392B"
+DANGER_HOVER = "#FAD4D4"
+NEUTRAL_BG = "#EEF0F3"
+NEUTRAL_HOVER = "#E2E5EA"
+
+BADGE_COLORS = ["#00B894", "#0984E3", "#6C5CE7", "#E17055", "#E84393", "#00B8D9"]
 
 FONT_BASE = ("맑은 고딕", 10)
 FONT_SECTION = ("맑은 고딕", 11, "bold")
 FONT_LABEL = ("맑은 고딕", 9, "bold")
-FONT_HEADER = ("맑은 고딕", 13, "bold")
+FONT_HEADER = ("맑은 고딕", 12, "bold")
 FONT_BTN = ("맑은 고딕", 10, "bold")
+
+BTN_HEIGHT = 40  # 추가/수정/삭제/복사 버튼 공통 높이
 
 DEFAULT_TEMPLATES = [
     {
@@ -109,12 +119,97 @@ def extract_placeholders(text):
     return seen
 
 
-def card(parent, **kwargs):
-    """흰 배경 + 옅은 테두리를 가진 '카드'처럼 보이는 프레임"""
-    outer = tk.Frame(parent, bg=BORDER, **kwargs)
-    inner = tk.Frame(outer, bg=CARD)
-    inner.pack(fill="both", expand=True, padx=1, pady=1)
-    return outer, inner
+def _rounded_points(x1, y1, x2, y2, r):
+    r = max(0, min(r, (x2 - x1) / 2, (y2 - y1) / 2))
+    return [
+        x1 + r, y1,
+        x2 - r, y1,
+        x2, y1,
+        x2, y1 + r,
+        x2, y2 - r,
+        x2, y2,
+        x2 - r, y2,
+        x1 + r, y2,
+        x1, y2,
+        x1, y2 - r,
+        x1, y1 + r,
+        x1, y1,
+    ]
+
+
+# ------------------------------------------------------------------
+# 둥근 모서리 버튼 (Canvas 기반, 실제 rounded-rect를 그림)
+# ------------------------------------------------------------------
+class RoundedButton(tk.Frame):
+    def __init__(
+        self, parent, text, command, bg, fg, hover_bg=None,
+        height=BTN_HEIGHT, radius=10, font=FONT_BTN, parent_bg=None,
+    ):
+        parent_bg = parent_bg or parent["bg"]
+        super().__init__(parent, bg=parent_bg, height=height)
+        self.pack_propagate(False)
+        self.command = command
+        self.bg_color = bg
+        self.hover_color = hover_bg or bg
+        self.fg = fg
+        self.radius = radius
+        self.font = font
+        self.text = text
+        self._current = bg
+
+        self.canvas = tk.Canvas(self, bg=parent_bg, highlightthickness=0, cursor="hand2")
+        self.canvas.pack(fill="both", expand=True)
+        self.canvas.bind("<Configure>", lambda e: self._draw(self._current))
+        self.canvas.bind("<Button-1>", self._on_click)
+        self.canvas.bind("<Enter>", lambda e: self._draw(self.hover_color))
+        self.canvas.bind("<Leave>", lambda e: self._draw(self.bg_color))
+
+    def _draw(self, color):
+        self._current = color
+        w = self.canvas.winfo_width()
+        h = self.canvas.winfo_height()
+        if w < 4 or h < 4:
+            return
+        self.canvas.delete("all")
+        pts = _rounded_points(1, 1, w - 1, h - 1, self.radius)
+        self.canvas.create_polygon(pts, smooth=True, fill=color, outline=color)
+        self.canvas.create_text(
+            w / 2, h / 2, text=self.text, fill=self.fg, font=self.font
+        )
+
+    def _on_click(self, event):
+        if self.command:
+            self.command()
+
+
+# ------------------------------------------------------------------
+# 둥근 모서리 카드 (Canvas 배경 + 내부 콘텐츠 프레임)
+# ------------------------------------------------------------------
+class RoundedCard(tk.Frame):
+    def __init__(self, parent, radius=16, bg=CARD, border=BORDER, parent_bg=None, **kwargs):
+        parent_bg = parent_bg or parent["bg"]
+        super().__init__(parent, bg=parent_bg, **kwargs)
+        self.radius = radius
+        self.bg_color = bg
+        self.border_color = border
+        self.canvas = tk.Canvas(self, bg=parent_bg, highlightthickness=0)
+        self.canvas.pack(fill="both", expand=True)
+        self.content = tk.Frame(self.canvas, bg=bg)
+        self._window = self.canvas.create_window(10, 10, anchor="nw", window=self.content)
+        self.canvas.bind("<Configure>", self._on_resize)
+
+    def _on_resize(self, event):
+        w, h = event.width, event.height
+        if w < 4 or h < 4:
+            return
+        self.canvas.delete("bg")
+        pts = _rounded_points(1, 1, w - 1, h - 1, self.radius)
+        self.canvas.create_polygon(
+            pts, smooth=True, fill=self.bg_color, outline=self.border_color, tags="bg"
+        )
+        self.canvas.tag_lower("bg")
+        self.canvas.coords(self._window, 10, 10)
+        self.canvas.itemconfigure(self._window, width=max(0, w - 20), height=max(0, h - 20))
 
 
 # ------------------------------------------------------------------
@@ -124,13 +219,32 @@ class TemplateEditDialog(tk.Toplevel):
     def __init__(self, parent, name="", body=""):
         super().__init__(parent)
         self.title("템플릿 편집")
-        self.geometry("580x520")
+        self.geometry("620x560")
+        self.minsize(480, 380)
         self.configure(bg=BG)
         self.result = None
         self.transient(parent)
         self.grab_set()
 
         pad = {"padx": 20, "pady": (16, 4)}
+
+        # ── 항상 화면에 보이는 하단 버튼 영역을 '먼저' side=bottom 으로 고정 ──
+        btn_frame = tk.Frame(self, bg=BG)
+        btn_frame.pack(side="bottom", fill="x", padx=20, pady=16)
+        save_holder = tk.Frame(btn_frame, bg=BG, width=100, height=BTN_HEIGHT)
+        save_holder.pack_propagate(False)
+        save_holder.pack(side="right")
+        RoundedButton(
+            save_holder, "저장", self._on_save, bg=PRIMARY, fg="white",
+            hover_bg=PRIMARY_DARK, height=BTN_HEIGHT, radius=10, parent_bg=BG,
+        ).pack(fill="both", expand=True)
+        cancel_holder = tk.Frame(btn_frame, bg=BG, width=100, height=BTN_HEIGHT)
+        cancel_holder.pack_propagate(False)
+        cancel_holder.pack(side="right", padx=(0, 8))
+        RoundedButton(
+            cancel_holder, "취소", self.destroy, bg=NEUTRAL_BG, fg=TEXT_MAIN,
+            hover_bg=NEUTRAL_HOVER, height=BTN_HEIGHT, radius=10, parent_bg=BG,
+        ).pack(fill="both", expand=True)
 
         tk.Label(self, text="템플릿 이름", font=FONT_LABEL, bg=BG, fg=TEXT_MAIN).pack(
             anchor="w", **pad
@@ -148,30 +262,18 @@ class TemplateEditDialog(tk.Toplevel):
             font=FONT_LABEL, bg=BG, fg=TEXT_MAIN,
         ).pack(anchor="w", **pad)
 
-        body_outer, body_inner = card(self)
-        body_outer.pack(fill="both", expand=True, padx=20, pady=(0, 6))
+        body_card = RoundedCard(self, radius=12, bg=CARD, border=BORDER, parent_bg=BG)
+        body_card.pack(fill="both", expand=True, padx=20, pady=(0, 6))
+        body_inner = body_card.content
         self.body_text = tk.Text(
             body_inner, font=FONT_BASE, wrap="word", relief="flat",
-            bg=CARD, fg=TEXT_MAIN, padx=10, pady=10,
+            bg=CARD, fg=TEXT_MAIN,
         )
         scroll = tk.Scrollbar(body_inner, command=self.body_text.yview)
         self.body_text.configure(yscrollcommand=scroll.set)
         self.body_text.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
         self.body_text.insert("1.0", body)
-
-        btn_frame = tk.Frame(self, bg=BG)
-        btn_frame.pack(fill="x", padx=20, pady=16)
-        tk.Button(
-            btn_frame, text="취소", width=10, font=FONT_BASE, relief="flat",
-            bg="#E5E7EB", fg=TEXT_MAIN, activebackground="#D1D5DB",
-            command=self.destroy,
-        ).pack(side="right", padx=(6, 0), ipady=4)
-        tk.Button(
-            btn_frame, text="저장", width=10, font=FONT_BTN, relief="flat",
-            bg=PRIMARY, fg="white", activebackground=PRIMARY_DARK,
-            command=self._on_save,
-        ).pack(side="right", ipady=4)
 
     def _on_save(self):
         name = self.name_entry.get().strip()
@@ -201,9 +303,9 @@ class App(tk.Tk):
         self.selected_index = None
         self.field_vars = {}      # placeholder name -> tk.StringVar
         self.field_entries = {}   # placeholder name -> tk.Entry
+        self.template_row_widgets = []  # (outer_frame, inner_frame) per template row
 
         self._apply_icon()
-        self._build_style()
         self._build_header()
         self._build_layout()
         self._refresh_template_list()
@@ -216,99 +318,114 @@ class App(tk.Tk):
             except tk.TclError:
                 pass
 
-    # ---------------- 스타일 ----------------
-    def _build_style(self):
-        style = ttk.Style(self)
-        try:
-            style.theme_use("clam")
-        except tk.TclError:
-            pass
-        style.configure("TScrollbar", background=BORDER, troughcolor=BG, borderwidth=0)
-
     def _build_header(self):
-        header = tk.Frame(self, bg=HEADER_BG, height=54)
+        header = tk.Frame(self, bg=HEADER_BG, height=42)
         header.pack(fill="x", side="top")
         header.pack_propagate(False)
         tk.Label(
             header, text="✉  섭외 메세지 생성기", font=FONT_HEADER,
             bg=HEADER_BG, fg="white",
-        ).pack(side="left", padx=20)
+        ).pack(side="left", padx=18)
 
     # ---------------- UI 구성 ----------------
     def _build_layout(self):
         root_frame = tk.Frame(self, bg=BG)
         root_frame.pack(fill="both", expand=True)
 
-        # 왼쪽: 템플릿 목록
-        left_outer, left = card(root_frame, width=270)
-        left_outer.pack(side="left", fill="y", padx=(16, 8), pady=16)
-        left_outer.pack_propagate(False)
+        # 왼쪽: 템플릿 목록 -------------------------------------------------
+        left = RoundedCard(root_frame, radius=16, width=280, parent_bg=BG)
+        left.pack(side="left", fill="y", padx=(16, 8), pady=16)
+        left.pack_propagate(False)
+        left_content = left.content
 
         tk.Label(
-            left, text="템플릿 목록", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
-        ).pack(anchor="w", padx=16, pady=(14, 8))
+            left_content, text="템플릿 목록", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
+        ).pack(anchor="w", pady=(4, 8))
 
-        list_frame = tk.Frame(left, bg=CARD)
-        list_frame.pack(fill="both", expand=True, padx=16)
-        self.template_listbox = tk.Listbox(
-            list_frame, font=FONT_BASE, activestyle="none", relief="flat",
-            bg=CARD, fg=TEXT_MAIN, highlightthickness=0,
-            selectbackground=PRIMARY, selectforeground="white",
-            bd=0,
+        list_area = tk.Frame(left_content, bg=CARD)
+        list_area.pack(fill="both", expand=True)
+
+        list_canvas = tk.Canvas(list_area, bg=CARD, highlightthickness=0)
+        list_scroll = tk.Scrollbar(list_area, command=list_canvas.yview)
+        self.template_list_frame = tk.Frame(list_canvas, bg=CARD)
+        self.template_list_frame.bind(
+            "<Configure>",
+            lambda e: list_canvas.configure(scrollregion=list_canvas.bbox("all")),
         )
-        list_scroll = tk.Scrollbar(list_frame, command=self.template_listbox.yview)
-        self.template_listbox.configure(yscrollcommand=list_scroll.set)
-        self.template_listbox.pack(side="left", fill="both", expand=True)
+        list_canvas.create_window((0, 0), window=self.template_list_frame, anchor="nw")
+        list_canvas.configure(yscrollcommand=list_scroll.set)
+        list_canvas.pack(side="left", fill="both", expand=True)
         list_scroll.pack(side="right", fill="y")
-        self.template_listbox.bind("<<ListboxSelect>>", self._on_select_template)
 
-        btns = tk.Frame(left, bg=CARD)
-        btns.pack(fill="x", padx=16, pady=14)
-        self._small_btn(btns, "＋ 추가", self._add_template, PRIMARY, "white").pack(
-            side="left", expand=True, fill="x", padx=(0, 4)
-        )
-        self._small_btn(btns, "수정", self._edit_template, "#E5E7EB", TEXT_MAIN).pack(
-            side="left", expand=True, fill="x", padx=4
-        )
-        self._small_btn(btns, "삭제", self._delete_template, "#FEE2E2", "#B91C1C").pack(
-            side="left", expand=True, fill="x", padx=(4, 0)
-        )
+        btns = tk.Frame(left_content, bg=CARD)
+        btns.pack(fill="x", pady=(12, 4))
+        btns.columnconfigure((0, 1, 2), weight=1, uniform="tmplbtn")
+        btns.rowconfigure(0, minsize=BTN_HEIGHT)
 
-        # 가운데: 항목 입력
-        mid_outer, mid = card(root_frame, width=310)
-        mid_outer.pack(side="left", fill="both", padx=8, pady=16)
-        mid_outer.pack_propagate(False)
+        add_holder = tk.Frame(btns, bg=CARD, height=BTN_HEIGHT)
+        add_holder.grid(row=0, column=0, sticky="nsew", padx=(0, 4))
+        RoundedButton(
+            add_holder, "＋ 추가", self._add_template, bg=PRIMARY, fg="white",
+            hover_bg=PRIMARY_DARK, height=BTN_HEIGHT, radius=10, parent_bg=CARD,
+        ).pack(fill="both", expand=True)
+
+        edit_holder = tk.Frame(btns, bg=CARD, height=BTN_HEIGHT)
+        edit_holder.grid(row=0, column=1, sticky="nsew", padx=4)
+        RoundedButton(
+            edit_holder, "수정", self._edit_template, bg=NEUTRAL_BG, fg=TEXT_MAIN,
+            hover_bg=NEUTRAL_HOVER, height=BTN_HEIGHT, radius=10, parent_bg=CARD,
+        ).pack(fill="both", expand=True)
+
+        del_holder = tk.Frame(btns, bg=CARD, height=BTN_HEIGHT)
+        del_holder.grid(row=0, column=2, sticky="nsew", padx=(4, 0))
+        RoundedButton(
+            del_holder, "삭제", self._delete_template, bg=DANGER_BG, fg=DANGER_FG,
+            hover_bg=DANGER_HOVER, height=BTN_HEIGHT, radius=10, parent_bg=CARD,
+        ).pack(fill="both", expand=True)
+
+        # 가운데: 항목 입력 ---------------------------------------------------
+        mid = RoundedCard(root_frame, radius=16, width=310, parent_bg=BG)
+        mid.pack(side="left", fill="both", padx=8, pady=16)
+        mid.pack_propagate(False)
+        mid_content = mid.content
 
         tk.Label(
-            mid, text="변경할 항목 입력", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
-        ).pack(anchor="w", padx=16, pady=(14, 8))
+            mid_content, text="변경할 항목 입력", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
+        ).pack(anchor="w", pady=(4, 8))
 
-        canvas = tk.Canvas(mid, highlightthickness=0, bg=CARD)
-        vscroll = tk.Scrollbar(mid, orient="vertical", command=canvas.yview)
+        fields_area = tk.Frame(mid_content, bg=CARD)
+        fields_area.pack(fill="both", expand=True)
+
+        canvas = tk.Canvas(fields_area, highlightthickness=0, bg=CARD)
+        vscroll = tk.Scrollbar(fields_area, orient="vertical", command=canvas.yview)
         self.fields_frame = tk.Frame(canvas, bg=CARD)
         self.fields_frame.bind(
             "<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         canvas.create_window((0, 0), window=self.fields_frame, anchor="nw")
         canvas.configure(yscrollcommand=vscroll.set)
-        canvas.pack(side="left", fill="both", expand=True, padx=(16, 0))
-        vscroll.pack(side="right", fill="y", padx=(0, 4))
-        self.fields_canvas = canvas
+        canvas.pack(side="left", fill="both", expand=True)
+        vscroll.pack(side="right", fill="y")
 
-        self._primary_btn(mid, "메세지 생성 ▶", self._generate_message).pack(
-            fill="x", padx=16, pady=14, ipady=6
-        )
+        gen_holder = tk.Frame(mid_content, bg=CARD, height=BTN_HEIGHT)
+        gen_holder.pack_propagate(False)
+        gen_holder.pack(fill="x", pady=(12, 4))
+        RoundedButton(
+            gen_holder, "메세지 생성 ▶", self._generate_message, bg=PRIMARY_DARK,
+            fg="white", hover_bg=PRIMARY, height=BTN_HEIGHT, radius=10, parent_bg=CARD,
+        ).pack(fill="both", expand=True)
 
-        # 오른쪽: 미리보기
-        right_outer, right = card(root_frame)
-        right_outer.pack(side="left", fill="both", expand=True, padx=(8, 16), pady=16)
+        # 오른쪽: 미리보기 -----------------------------------------------------
+        right = RoundedCard(root_frame, radius=16, parent_bg=BG)
+        right.pack(side="left", fill="both", expand=True, padx=(8, 16), pady=16)
+        right_content = right.content
 
         tk.Label(
-            right, text="미리보기", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
-        ).pack(anchor="w", padx=16, pady=(14, 8))
+            right_content, text="미리보기", font=FONT_SECTION, bg=CARD, fg=TEXT_MAIN,
+        ).pack(anchor="w", pady=(4, 8))
 
-        preview_frame = tk.Frame(right, bg=CARD)
-        preview_frame.pack(fill="both", expand=True, padx=16)
+        preview_frame = tk.Frame(right_content, bg=CARD)
+        preview_frame.pack(fill="both", expand=True)
         self.preview_text = tk.Text(
             preview_frame, font=("맑은 고딕", 11), wrap="word", state="disabled",
             relief="flat", bg="#F8F9FB", fg=TEXT_MAIN, padx=14, pady=14,
@@ -319,57 +436,79 @@ class App(tk.Tk):
         self.preview_text.pack(side="left", fill="both", expand=True)
         preview_scroll.pack(side="right", fill="y")
 
-        self._accent_btn(right, "📋  클립보드로 복사", self._copy_to_clipboard).pack(
-            fill="x", padx=16, pady=(12, 4), ipady=7
-        )
+        copy_holder = tk.Frame(right_content, bg=CARD, height=BTN_HEIGHT)
+        copy_holder.pack_propagate(False)
+        copy_holder.pack(fill="x", pady=(12, 4))
+        RoundedButton(
+            copy_holder, "📋  클립보드로 복사", self._copy_to_clipboard, bg=PRIMARY,
+            fg="white", hover_bg=PRIMARY_DARK, height=BTN_HEIGHT, radius=10, parent_bg=CARD,
+        ).pack(fill="both", expand=True)
 
         self.status_label = tk.Label(
-            right, text="", fg=TEXT_SUB, bg=CARD, font=("맑은 고딕", 9)
+            right_content, text="", fg=TEXT_SUB, bg=CARD, font=("맑은 고딕", 9)
         )
-        self.status_label.pack(anchor="w", padx=16, pady=(0, 14))
-
-    # ---------------- 버튼 헬퍼 ----------------
-    def _small_btn(self, parent, text, command, bg, fg):
-        return tk.Button(
-            parent, text=text, command=command, font=("맑은 고딕", 9, "bold"),
-            relief="flat", bg=bg, fg=fg, activebackground=bg, bd=0,
-            cursor="hand2", pady=6,
-        )
-
-    def _primary_btn(self, parent, text, command):
-        return tk.Button(
-            parent, text=text, command=command, font=FONT_BTN,
-            relief="flat", bg=PRIMARY_DARK, fg="white",
-            activebackground=PRIMARY, activeforeground="white",
-            bd=0, cursor="hand2",
-        )
-
-    def _accent_btn(self, parent, text, command):
-        return tk.Button(
-            parent, text=text, command=command, font=FONT_BTN,
-            relief="flat", bg=PRIMARY, fg="white",
-            activebackground=PRIMARY_DARK, activeforeground="white",
-            bd=0, cursor="hand2",
-        )
+        self.status_label.pack(anchor="w", pady=(6, 4))
 
     # ---------------- 템플릿 목록 로직 ----------------
     def _refresh_template_list(self, keep_selection=True):
         prev = self.selected_index
-        self.template_listbox.delete(0, "end")
-        for t in self.templates:
-            self.template_listbox.insert("end", "  " + t["name"])
         save_templates(self.templates)
+
         if keep_selection and prev is not None and prev < len(self.templates):
-            self.template_listbox.selection_set(prev)
-            self._load_fields_for(prev)
+            new_index = prev
+        elif self.templates:
+            new_index = 0
+        else:
+            new_index = None
+
+        self._render_template_rows(new_index)
+
+        if new_index is not None:
+            self._load_fields_for(new_index)
         else:
             self._clear_fields()
 
-    def _on_select_template(self, event):
-        sel = self.template_listbox.curselection()
-        if not sel:
+    def _render_template_rows(self, active_index):
+        self.selected_index = active_index
+        for w in self.template_list_frame.winfo_children():
+            w.destroy()
+        self.template_row_widgets = []
+
+        for idx, t in enumerate(self.templates):
+            selected = (idx == active_index)
+            border_color = PRIMARY if selected else BORDER
+            row_bg = PRIMARY_TINT if selected else CARD
+
+            outer = tk.Frame(self.template_list_frame, bg=border_color, cursor="hand2")
+            outer.pack(fill="x", pady=4)
+            inner_pad = 2 if selected else 1
+            inner = tk.Frame(outer, bg=row_bg)
+            inner.pack(fill="both", expand=True, padx=inner_pad, pady=inner_pad)
+
+            badge_color = BADGE_COLORS[idx % len(BADGE_COLORS)]
+            badge = tk.Canvas(inner, width=26, height=26, bg=row_bg, highlightthickness=0)
+            badge.pack(side="left", padx=(10, 8), pady=9)
+            badge.create_oval(1, 1, 25, 25, fill=badge_color, outline=badge_color)
+            badge.create_text(
+                13, 13, text=str(idx + 1), fill="white", font=("맑은 고딕", 9, "bold")
+            )
+
+            name_label = tk.Label(
+                inner, text=t["name"], bg=row_bg, fg=TEXT_MAIN, font=FONT_BASE,
+                anchor="w", justify="left", wraplength=190,
+            )
+            name_label.pack(side="left", fill="x", expand=True, pady=9, padx=(0, 8))
+
+            for widget in (outer, inner, badge, name_label):
+                widget.bind("<Button-1>", lambda e, i=idx: self._select_template(i))
+
+            self.template_row_widgets.append(outer)
+
+    def _select_template(self, index):
+        if index == self.selected_index:
             return
-        self._load_fields_for(sel[0])
+        self._render_template_rows(index)
+        self._load_fields_for(index)
 
     def _load_fields_for(self, index):
         self.selected_index = index
@@ -427,35 +566,33 @@ class App(tk.Tk):
         if dlg.result:
             self.templates.append(dlg.result)
             self._refresh_template_list(keep_selection=False)
-            self.template_listbox.selection_set(len(self.templates) - 1)
-            self._load_fields_for(len(self.templates) - 1)
+            new_idx = len(self.templates) - 1
+            self._render_template_rows(new_idx)
+            self._load_fields_for(new_idx)
 
     def _edit_template(self):
-        sel = self.template_listbox.curselection()
-        if not sel:
+        if self.selected_index is None:
             messagebox.showinfo("확인", "수정할 템플릿을 먼저 선택해주세요.")
             return
-        idx = sel[0]
+        idx = self.selected_index
         t = self.templates[idx]
         dlg = TemplateEditDialog(self, name=t["name"], body=t["body"])
         self.wait_window(dlg)
         if dlg.result:
             self.templates[idx] = dlg.result
-            self._refresh_template_list()
-            self.template_listbox.selection_set(idx)
+            self._render_template_rows(idx)
+            save_templates(self.templates)
             self._load_fields_for(idx)
 
     def _delete_template(self):
-        sel = self.template_listbox.curselection()
-        if not sel:
+        if self.selected_index is None:
             messagebox.showinfo("확인", "삭제할 템플릿을 먼저 선택해주세요.")
             return
-        idx = sel[0]
+        idx = self.selected_index
         if messagebox.askyesno(
             "삭제 확인", f"'{self.templates[idx]['name']}' 템플릿을 삭제할까요?"
         ):
             del self.templates[idx]
-            self.selected_index = None
             self._refresh_template_list(keep_selection=False)
 
     # ---------------- 메세지 생성 ----------------
